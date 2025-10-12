@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   Home, Users, Gift, Settings, LogOut, Menu, X, ChefHat, MapPin,
   Headphones as HeadphonesIcon, Wallet, BarChart3, Crown, Clock,
-  ArrowRight, CreditCard, ChevronLeft, ChevronRight, TrendingUp
+  ArrowRight, CreditCard, ChevronLeft, ChevronRight, TrendingUp, Package
 } from 'lucide-react';
 
 export default function DashboardLayout() {
@@ -125,6 +125,7 @@ export default function DashboardLayout() {
     { name: 'Customers', href: '/customers', icon: Users },
     { name: 'Branches', href: '/dashboard/branches', icon: MapPin },
     { name: 'Loyalty Config', href: '/dashboard/loyalty-config', icon: Settings },
+    { name: 'Starter Pack', href: '/dashboard/starter-pack', icon: Package },
     { name: 'Billing', href: '/dashboard/billing', icon: CreditCard },
     { name: 'Analytics', href: '/dashboard/analytics', icon: BarChart3 },
     { name: 'ROI Analysis', href: '/dashboard/roi', icon: TrendingUp },

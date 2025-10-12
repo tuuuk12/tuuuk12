@@ -28,6 +28,7 @@ import LoadingBar from './components/LoadingBar';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
 import LoyaltyROIDashboard from './components/LoyaltyROIDashboard';
 import CustomersPage from './components/CustomersPage';
+import StarterPackPage from './components/StarterPackPage';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useAuth();
@@ -143,6 +144,7 @@ function App() {
             <Route path="menu-items" element={<MenuItemsPage />} />
             <Route path="loyalty-config" element={<LoyaltyConfigPage />} />
             <Route path="branches" element={<BranchManagement />} />
+            <Route path="starter-pack" element={<StarterPackPage />} />
             <Route path="billing" element={<BillingPage />} />
             <Route path="support" element={<SupportUI />} />
             <Route path="analytics" element={<AnalyticsDashboard />} />
