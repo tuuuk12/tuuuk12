@@ -1,11 +1,36 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../contexts/AuthContext';
-import { SubscriptionService } from '../services/subscriptionService';
-import { StarterPackService, StarterPackOrder } from '../services/starterPackService';
-import { Package, Tablet, CheckCircle, Clock, AlertCircle, Truck, Wrench } from 'lucide-react';
-import { loadStripe } from '@stripe/stripe-js';
+import React, { useState, useEffect } from "react";
+import { useAuth } from "../contexts/AuthContext";
+import { SubscriptionService } from "../services/subscriptionService";
+import { StarterPackService, StarterPackOrder } from "../services/starterPackService";
+import {
+  Package,
+  Tablet,
+  CheckCircle,
+  Clock,
+  AlertCircle,
+  Truck,
+  Wrench,
+} from "lucide-react";
+import { loadStripe } from "@stripe/stripe-js";
+import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
+import { supabase } from "../lib/supabase";
 
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
+
+const CARD_ELEMENT_OPTIONS = {
+  style: {
+    base: {
+      fontSize: '16px',
+      color: '#424770',
+      '::placeholder': {
+        color: '#aab7c4',
+      },
+    },
+    invalid: {
+      color: '#9e2146',
+    },
+  },
+};
 
 export default function StarterPackPage() {
   const { user } = useAuth();
@@ -13,108 +38,35 @@ export default function StarterPackPage() {
   const [hasAccess, setHasAccess] = useState(false);
   const [includesTablet, setIncludesTablet] = useState(false);
   const [orders, setOrders] = useState<StarterPackOrder[]>([]);
-  const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    checkAccess();
-    loadOrders();
+    if (user) {
+      checkAccess();
+      loadOrders();
+    }
   }, [user]);
 
   const checkAccess = async () => {
-    if (!user) return;
-
     try {
-      const accessData = await SubscriptionService.checkSubscriptionAccess(user.id);
-      const isPaidPlan = accessData.subscription?.plan_type !== 'trial' && accessData.hasAccess;
+      const accessData = await SubscriptionService.checkSubscriptionAccess(user!.id);
+      const isPaidPlan = accessData.subscription?.plan_type !== "trial" && accessData.hasAccess;
       setHasAccess(isPaidPlan);
     } catch (error) {
-      console.error('Error checking access:', error);
+      console.error("Error checking access:", error);
     } finally {
       setLoading(false);
     }
   };
 
   const loadOrders = async () => {
-    if (!user) return;
-
     try {
-      const userOrders = await StarterPackService.getUserOrders(user.id);
+      const userOrders = await StarterPackService.getUserOrders(user!.id);
       setOrders(userOrders);
     } catch (error) {
-      console.error('Error loading orders:', error);
+      console.error("Error loading orders:", error);
     }
   };
-
-  const handleOrderSubmit = async () => {
-    if (!user) return;
-
-    setProcessing(true);
-    setError(null);
-
-    try {
-      const totalCost = StarterPackService.calculateTotalCost(includesTablet);
-
-      if (totalCost === 0) {
-        const order = await StarterPackService.createOrder(user.id, includesTablet);
-        await StarterPackService.updateOrderPaymentStatus(order.id, 'free-order', 'completed');
-        await loadOrders();
-        setIncludesTablet(false);
-        return;
-      }
-
-      const order = await StarterPackService.createOrder(user.id, includesTablet);
-
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-payment`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-          },
-          body: JSON.stringify({
-            userId: user.id,
-            amount: totalCost,
-            metadata: {
-              orderId: order.id,
-              orderType: 'starter_pack',
-              includesTablet: includesTablet
-            }
-          })
-        }
-      );
-
-      const { clientSecret } = await response.json();
-      const stripe = await stripePromise;
-
-      if (!stripe) {
-        throw new Error('Stripe failed to load');
-      }
-
-      const { error: stripeError } = await stripe.confirmCardPayment(clientSecret);
-
-      if (stripeError) {
-        await StarterPackService.updateOrderPaymentStatus(order.id, clientSecret, 'failed');
-        throw new Error(stripeError.message);
-      }
-
-      await StarterPackService.updateOrderPaymentStatus(order.id, clientSecret, 'completed');
-      await loadOrders();
-      setIncludesTablet(false);
-    } catch (err: any) {
-      console.error('Error processing order:', err);
-      setError(err.message || 'Failed to process order');
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const totalCost = StarterPackService.calculateTotalCost(includesTablet);
-  const activeOrder = orders.find(order =>
-    order.payment_status === 'completed' &&
-    order.order_status !== 'delivered'
-  );
 
   if (loading) {
     return (
@@ -143,6 +95,107 @@ export default function StarterPackPage() {
       </div>
     );
   }
+
+  const activeOrder = orders.find(
+    (order) => order.payment_status === "completed" && order.order_status !== "delivered"
+  );
+
+  return (
+    <Elements stripe={stripePromise}>
+      <StarterPackContent
+        user={user!}
+        includesTablet={includesTablet}
+        setIncludesTablet={setIncludesTablet}
+        orders={orders}
+        activeOrder={activeOrder}
+        setOrders={setOrders}
+        error={error}
+        setError={setError}
+      />
+    </Elements>
+  );
+}
+
+function StarterPackContent({
+  user,
+  includesTablet,
+  setIncludesTablet,
+  orders,
+  setOrders,
+  activeOrder,
+  error,
+  setError,
+}: any) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [isProcessing, setIsProcessing] = useState(false);
+  const totalCost = StarterPackService.calculateTotalCost(includesTablet);
+
+  const handleOrderSubmit = async () => {
+    try {
+      setIsProcessing(true);
+      setError(null);
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("No active session. Please log in again.");
+
+      const order = await StarterPackService.createOrder(user.id, includesTablet);
+
+      if (!includesTablet) {
+        await StarterPackService.updateOrderPaymentStatus(order.id, "free-order", "completed");
+        const updatedOrders = await StarterPackService.getUserOrders(user.id);
+        setOrders(updatedOrders);
+        return;
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-starterpack-payment`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            userId: user.id,
+            amount: order.total_cost,
+            metadata: { orderId: order.id, includesTablet },
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Payment failed: ${errorText}`);
+      }
+
+      const { clientSecret } = await response.json();
+      if (!clientSecret) throw new Error("Missing clientSecret from server.");
+
+      if (!stripe || !elements) throw new Error("Stripe not initialized.");
+      const cardElement = elements.getElement(CardElement);
+      if (!cardElement) throw new Error("Card element not found.");
+
+      const { error: stripeError, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
+        payment_method: { card: cardElement },
+      });
+
+      if (stripeError) throw new Error(stripeError.message);
+      if (paymentIntent?.status !== "succeeded") {
+        throw new Error(`Payment failed: ${paymentIntent?.status}`);
+      }
+
+      await StarterPackService.updateOrderPaymentStatus(order.id, paymentIntent.id, "completed");
+      const userOrders = await StarterPackService.getUserOrders(user.id);
+      setOrders(userOrders);
+      setIncludesTablet(false);
+    } catch (err: any) {
+      console.error("Error processing order:", err);
+      setError(err.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   return (
     <div className="max-w-6xl mx-auto space-y-8">
@@ -213,6 +266,15 @@ export default function StarterPackPage() {
               </div>
             )}
 
+            {includesTablet && (
+              <div className="bg-gray-50 rounded-xl p-6 space-y-4">
+                <h3 className="text-lg font-semibold text-gray-900">Payment Details</h3>
+                <div className="bg-white p-4 rounded-lg border border-gray-300">
+                  <CardElement options={CARD_ELEMENT_OPTIONS} />
+                </div>
+              </div>
+            )}
+
             <div className="bg-gray-50 rounded-xl p-6">
               <div className="flex items-center justify-between mb-4">
                 <span className="text-lg font-medium text-gray-900">Total Cost</span>
@@ -224,10 +286,14 @@ export default function StarterPackPage() {
               </div>
               <button
                 onClick={handleOrderSubmit}
-                disabled={processing}
+                disabled={isProcessing || !stripe}
                 className="w-full bg-gradient-to-r from-[#E6A85C] to-[#E85A9B] text-white font-semibold py-4 rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {processing ? 'Processing...' : totalCost === 0 ? 'Place Order' : `Pay ${totalCost} AED`}
+                {isProcessing
+                  ? "Processing..."
+                  : totalCost === 0
+                  ? "Place Order"
+                  : `Pay ${totalCost} AED`}
               </button>
             </div>
           </div>
@@ -238,36 +304,38 @@ export default function StarterPackPage() {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
           <h2 className="text-2xl font-bold text-gray-900 mb-6">Order History</h2>
           <div className="space-y-4">
-            {orders.map((order) => (
+            {orders.map((order: StarterPackOrder) => (
               <div key={order.id} className="border border-gray-200 rounded-xl p-6">
                 <div className="flex items-start justify-between mb-4">
                   <div>
                     <p className="font-semibold text-gray-900">Order #{order.id.slice(0, 8)}</p>
                     <p className="text-sm text-gray-600">
-                      {new Date(order.created_at).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
+                      {new Date(order.created_at).toLocaleDateString("en-US", {
+                        year: "numeric",
+                        month: "long",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
                       })}
                     </p>
                   </div>
                   <div className="text-right">
                     <p className="font-bold text-gray-900">{order.total_cost} AED</p>
                     <p className="text-sm text-gray-600">
-                      {order.includes_tablet ? 'With Tablet' : 'Starter Pack Only'}
+                      {order.includes_tablet ? "With Tablet" : "Starter Pack Only"}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                    order.order_status === 'delivered'
-                      ? 'bg-green-100 text-green-800'
-                      : order.order_status === 'out_for_delivery'
-                      ? 'bg-blue-100 text-blue-800'
-                      : 'bg-yellow-100 text-yellow-800'
-                  }`}>
+                  <span
+                    className={`px-3 py-1 rounded-full text-sm font-medium ${
+                      order.order_status === "delivered"
+                        ? "bg-green-100 text-green-800"
+                        : order.order_status === "out_for_delivery"
+                        ? "bg-blue-100 text-blue-800"
+                        : "bg-yellow-100 text-yellow-800"
+                    }`}
+                  >
                     {StarterPackService.getStatusLabel(order.order_status)}
                   </span>
                 </div>
@@ -282,11 +350,11 @@ export default function StarterPackPage() {
 
 function OrderTracking({ order }: { order: StarterPackOrder }) {
   const stages = [
-    { key: 'received', label: 'Order Received', icon: CheckCircle },
-    { key: 'preparing', label: 'Preparing', icon: Package },
-    { key: 'configuring', label: 'Configuring', icon: Wrench },
-    { key: 'out_for_delivery', label: 'Out for Delivery', icon: Truck },
-    { key: 'delivered', label: 'Delivered', icon: CheckCircle }
+    { key: "received", label: "Order Received", icon: CheckCircle },
+    { key: "preparing", label: "Preparing", icon: Package },
+    { key: "configuring", label: "Configuring", icon: Wrench },
+    { key: "out_for_delivery", label: "Out for Delivery", icon: Truck },
+    { key: "delivered", label: "Delivered", icon: CheckCircle },
   ];
 
   const currentIndex = StarterPackService.getStatusIndex(order.order_status);
@@ -300,11 +368,12 @@ function OrderTracking({ order }: { order: StarterPackOrder }) {
           <div className="flex items-center gap-2 text-sm text-gray-700">
             <Clock className="w-4 h-4" />
             <span>
-              Estimated delivery: {new Date(order.estimated_delivery).toLocaleString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
+              Estimated delivery:{" "}
+              {new Date(order.estimated_delivery).toLocaleString("en-US", {
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
               })}
             </span>
           </div>
@@ -322,30 +391,22 @@ function OrderTracking({ order }: { order: StarterPackOrder }) {
               {index < stages.length - 1 && (
                 <div
                   className={`absolute left-6 top-12 w-0.5 h-full ${
-                    isActive ? 'bg-green-500' : 'bg-gray-300'
+                    isActive ? "bg-green-500" : "bg-gray-300"
                   }`}
                 />
               )}
               <div
                 className={`relative z-10 w-12 h-12 rounded-full flex items-center justify-center ${
-                  isActive
-                    ? 'bg-green-500 text-white'
-                    : 'bg-gray-200 text-gray-400'
+                  isActive ? "bg-green-500 text-white" : "bg-gray-200 text-gray-400"
                 }`}
               >
                 <Icon className="w-6 h-6" />
               </div>
               <div className="flex-1">
-                <p
-                  className={`font-semibold ${
-                    isActive ? 'text-gray-900' : 'text-gray-500'
-                  }`}
-                >
+                <p className={`font-semibold ${isActive ? "text-gray-900" : "text-gray-500"}`}>
                   {stage.label}
                 </p>
-                {isCurrent && (
-                  <p className="text-sm text-blue-600 font-medium">In Progress</p>
-                )}
+                {isCurrent && <p className="text-sm text-blue-600 font-medium">In Progress</p>}
               </div>
             </div>
           );
