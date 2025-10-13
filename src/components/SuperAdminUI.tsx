@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, Building, DollarSign, TrendingUp, BarChart3, MessageSquare, Settings, LogOut, RefreshCw, Search, Filter, Eye, MoreVertical, Crown, AlertCircle, CheckCircle, Clock, Star, ArrowRight, Send, X, Loader2, Plus, FileText, Download, Upload, Paperclip, Image, File, User, Shield, Zap, Target, Gift, Calendar, Phone, Mail, CreditCard as Edit3, Trash2, UserPlus, Key, Lock, EyeOff } from 'lucide-react';
+import { Users, Building, DollarSign, TrendingUp, BarChart3, MessageSquare, Settings, LogOut, RefreshCw, Search, Filter, Eye, MoreVertical, Crown, AlertCircle, CheckCircle, Clock, Star, ArrowRight, Send, X, Loader2, Plus, FileText, Download, Upload, Paperclip, Image, File, User, Shield, Zap, Target, Gift, Calendar, Phone, Mail, CreditCard as Edit3, Trash2, UserPlus, Key, Lock, EyeOff, Package } from 'lucide-react';
 import { SupportService, SupportTicket, SupportMessage } from '../services/supportService';
 import { SubscriptionService } from '../services/subscriptionService';
 import { ChatService, SupportAgent } from '../services/chatService';
+import StarterPackOrdersAdmin from './StarterPackOrdersAdmin';
 
 const SuperAdminUI: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'agents' | 'subscriptions' | 'analytics'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'agents' | 'subscriptions' | 'analytics' | 'starter-packs'>('overview');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const navigate = useNavigate();
@@ -274,6 +275,7 @@ const SuperAdminUI: React.FC = () => {
               { id: 'overview', label: 'Overview', icon: BarChart3 },
               { id: 'agents', label: 'Support Agents', icon: Users },
               { id: 'subscriptions', label: 'Subscriptions', icon: Crown },
+              { id: 'starter-packs', label: 'Starter Packs', icon: Package },
               { id: 'analytics', label: 'Analytics', icon: TrendingUp },
               { id: 'support', label: 'Support Portal', icon: MessageSquare, external: true }
             ].map((tab) => {
@@ -517,6 +519,11 @@ const SuperAdminUI: React.FC = () => {
                 <p className="text-gray-600">Subscription management features coming soon...</p>
               </div>
             </div>
+          )}
+
+          {/* Starter Packs Tab */}
+          {activeTab === 'starter-packs' && (
+            <StarterPackOrdersAdmin />
           )}
 
           {/* Analytics Tab */}
