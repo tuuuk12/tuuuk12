@@ -12,6 +12,7 @@ export interface StarterPackOrder {
   id: string;
   user_id: string;
   restaurant_id?: string;
+  restaurant_name?: string;
   order_status: 'pending' | 'received' | 'preparing' | 'configuring' | 'out_for_delivery' | 'delivered';
   includes_tablet: boolean;
   tablet_cost: number;
@@ -45,16 +46,37 @@ export class StarterPackService {
       const tabletCost = includesTablet ? this.TABLET_COST : 0;
       const totalCost = this.STARTER_PACK_BASE_COST + tabletCost;
 
+      let restaurantName = 'Unknown Restaurant';
+      if (restaurantId) {
+        const { data: restaurant } = await supabase
+          .from('restaurants')
+          .select('name')
+          .eq('id', restaurantId)
+          .maybeSingle();
+        if (restaurant) restaurantName = restaurant.name;
+      } else {
+        const { data: restaurant } = await supabase
+          .from('restaurants')
+          .select('id, name')
+          .eq('owner_id', userId)
+          .maybeSingle();
+        if (restaurant) {
+          restaurantId = restaurant.id;
+          restaurantName = restaurant.name;
+        }
+      }
+
       const { data, error } = await supabase
         .from('starter_pack_orders')
         .insert({
           user_id: userId,
           restaurant_id: restaurantId || null,
+          restaurant_name: restaurantName,
           includes_tablet: includesTablet,
           tablet_cost: tabletCost,
           total_cost: totalCost,
           order_status: 'received',
-          payment_status: 'completed',
+          payment_status: includesTablet ? 'pending' : 'completed',
           delivery_address_line1: deliveryAddress.addressLine1,
           delivery_address_line2: deliveryAddress.addressLine2,
           delivery_city: deliveryAddress.city,
@@ -196,19 +218,38 @@ export class StarterPackService {
     return statuses.indexOf(status);
   }
 
-  static async updateProofOfDelivery(
+  static async uploadProofOfDelivery(
     orderId: string,
-    proofUrl: string
-  ): Promise<void> {
+    file: File
+  ): Promise<string> {
     try {
-      const { error } = await supabase
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${orderId}-${Date.now()}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('starter-pack-deliveries')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage
+        .from('starter-pack-deliveries')
+        .getPublicUrl(filePath);
+
+      const { error: updateError } = await supabase
         .from('starter_pack_orders')
-        .update({ proof_of_delivery_url: proofUrl })
+        .update({ proof_of_delivery_url: data.publicUrl })
         .eq('id', orderId);
 
-      if (error) throw error;
+      if (updateError) throw updateError;
+
+      return data.publicUrl;
     } catch (error: any) {
-      console.error('Error updating proof of delivery:', error);
+      console.error('Error uploading proof of delivery:', error);
       throw error;
     }
   }
