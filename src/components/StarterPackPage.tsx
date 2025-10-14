@@ -3,6 +3,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { SubscriptionService } from '../services/subscriptionService';
 import { StarterPackService, StarterPackOrder, DeliveryAddress } from '../services/starterPackService';
 import AddressCollectionModal from './AddressCollectionModal';
+import { supabase } from '../lib/supabase';
+
 import {
   Package,
   Tablet,
