@@ -122,7 +122,10 @@ function StarterPackContent() {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+             const { data: { session } } = await supabase.auth.getSession();
+
+Authorization: `Bearer ${session?.access_token}`,
+
             },
             body: JSON.stringify({
               userId: user!.id,
