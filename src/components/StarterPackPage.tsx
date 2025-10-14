@@ -117,7 +117,7 @@ function StarterPackContent() {
         }
 
         const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-starterpack-payment`,
+           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-starterpack-payment`,
           { 
             method: 'POST',
             headers: {
